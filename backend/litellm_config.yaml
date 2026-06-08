@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# LiteLLM Proxy Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+# Start the proxy:  litellm --config litellm_config.yaml
+# Docs:  https://docs.litellm.ai/docs/proxy/configs
+# ──────────────────────────────────────────────────────────────────────────────
+
+model_list:
+  # ── AWS Bedrock — Amazon Nova Lite ─────────────────────────────────────────
+  - model_name: nova-lite
+    litellm_params:
+      model: bedrock/us.amazon.nova-lite-v1:0
+      aws_access_key_id: os.environ/AWS_ACCESS_KEY_ID
+      aws_secret_access_key: os.environ/AWS_SECRET_ACCESS_KEY
+      aws_region_name: us-east-1
+
+  # ── Google Gemini — Gemini 2.0 Flash ───────────────────────────────────────
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # ── Groq — LLaMA 3.3 70B Versatile ────────────────────────────────────────
+  - model_name: groq-llama
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+litellm_settings:
+  drop_params: true          # Silently drop unsupported params per-provider
+  set_verbose: false         # Disable verbose logging in production
+
+router_settings:
+  fallbacks:
+    - gemini-flash: ["groq-llama"]
+
+general_settings:
+  master_key: sk-litellm-dev-master-key
