@@ -27,6 +27,10 @@ class AgentAskRequest(BaseModel):
         default=None,
         description="Workspace ID for attribution (Level 3+).",
     )
+    conversation_id: str | None = Field(
+        default=None,
+        description="Conversation ID to persist under or resume.",
+    )
 
 
 class ToolCallResponse(BaseModel):
@@ -52,6 +56,10 @@ class AgentAskResponse(BaseModel):
     thoughts: list[str] = Field(
         default_factory=list,
         description="Ordered list of agent reasoning steps.",
+    )
+    conversation_id: str | None = Field(
+        default=None,
+        description="ID of the conversation in the database.",
     )
 
 

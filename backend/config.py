@@ -37,8 +37,7 @@ class Settings(BaseSettings):
     LITELLM_BASE_URL: str = "http://localhost:4000"
     LITELLM_MASTER_KEY: str = "sk-litellm-dev-master-key"
 
-    # --- Database ---
-    APP_DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:15432/postgres"
+    APP_DATABASE_URL: str = "sqlite+aiosqlite:///./research_assistant.db"
 
     # --- Agent Search ---
     TAVILY_API_KEY: str | None = None
@@ -49,6 +48,10 @@ class Settings(BaseSettings):
     # --- Temporal (Level 5) ---
     TEMPORAL_HOST: str = "localhost:7233"
     TEMPORAL_TASK_QUEUE: str = "research-queue"
+
+    # --- MLOps Optimization (Level 6) ---
+    USE_MLFLOW_REGISTRY: bool = False
+
 
 
 

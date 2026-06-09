@@ -66,3 +66,16 @@ class IConversationRepository(ABC):
         user_id: str | None = None,
     ) -> list[dict]:
         """Return aggregated token usage records, optionally filtered."""
+
+    @abstractmethod
+    async def log_token_usage(
+        self,
+        workspace_id: str,
+        user_id: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        cost: float | None = None,
+    ) -> None:
+        """Log a token usage record to the database for tracking."""

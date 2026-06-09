@@ -10,6 +10,8 @@ services:
       - POSTGRES_DB=temporal
     ports:
       - "5432"
+    volumes:
+      - temporal_db_data:/var/lib/postgresql/data
 
   temporal:
     container_name: temporal-server
@@ -44,3 +46,10 @@ services:
       - POSTGRES_DB=research_assistant
     ports:
       - "5433:5432"
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+
+volumes:
+  temporal_db_data:
+  app_db_data:
+

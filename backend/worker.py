@@ -62,8 +62,19 @@ async def run_agent_activity(question: str, user_id: str | None, workspace_id: s
                 model_name="gemini-flash",
                 base_url=settings.LITELLM_BASE_URL,
                 api_key=litellm_api_key or settings.LITELLM_MASTER_KEY,
+                source_page="queue",
             )
-            use_case = RunAgentUseCase(agent_provider=agent)
+            
+            db_session = async_session_factory()
+            from adapters.repositories.conversation_repository import SqlAlchemyConversationRepository
+            conversation_repo = SqlAlchemyConversationRepository(db_session)
+            
+            use_case = RunAgentUseCase(
+                agent_provider=agent,
+                conversation_repo=conversation_repo,
+            )
+            use_case._session = db_session
+            
             result = await use_case.execute(
                 question=question,
                 user_id=user_id,

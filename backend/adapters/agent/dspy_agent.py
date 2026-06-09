@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 import contextvars
 from tavily import TavilyClient
 _current_workspace_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("_current_workspace_id", default=None)
+_active_db_session: contextvars.ContextVar[Any | None] = contextvars.ContextVar("_active_db_session", default=None)
+
 
 # ── Memory file helpers ───────────────────────────────────────────────────
 
@@ -85,10 +87,14 @@ def web_search(query: str) -> str:
             if title and content:
                 results_text.append(f"[{title}] {content}")
                 
-        return "\\n".join(results_text)
+        search_result = "\n".join(results_text)
+        if len(search_result) > 2000:
+            search_result = search_result[:2000] + "\n... [truncated]"
+        return search_result
     except Exception as exc:
         logging.getLogger(__name__).warning("Tavily search failed for query '%s': %s", query, exc)
         return f"Web search error: {str(exc)}"
+
 
 
 def remember_fact(key: str, value: str) -> str:
@@ -102,17 +108,25 @@ def remember_fact(key: str, value: str) -> str:
         Confirmation that the fact was stored.
     """
     workspace_id = _current_workspace_id.get() or "default"
-    import asyncio
     from infrastructure.database import async_session_factory
     from adapters.repositories.agent_memory_repository import SqlAlchemyAgentMemoryRepository
+    from asgiref.sync import async_to_sync
     
-    async def _do():
-        async with async_session_factory() as session:
+    session = _active_db_session.get()
+    if session:
+        async def _do():
             repo = SqlAlchemyAgentMemoryRepository(session)
             await repo.remember(workspace_id, key, value)
-            await session.commit()
-    
-    asyncio.run(_do())
+            await session.flush()
+        async_to_sync(_do)()
+    else:
+        async def _do_fallback():
+            async with async_session_factory() as fallback_session:
+                repo = SqlAlchemyAgentMemoryRepository(fallback_session)
+                await repo.remember(workspace_id, key, value)
+                await fallback_session.commit()
+        async_to_sync(_do_fallback)()
+        
     return f"Stored: '{key}' = '{value}'"
 
 
@@ -126,16 +140,23 @@ def recall_fact(key: str) -> str:
         The stored value, or a message indicating nothing was found.
     """
     workspace_id = _current_workspace_id.get() or "default"
-    import asyncio
     from infrastructure.database import async_session_factory
     from adapters.repositories.agent_memory_repository import SqlAlchemyAgentMemoryRepository
+    from asgiref.sync import async_to_sync
     
-    async def _do() -> str | None:
-        async with async_session_factory() as session:
+    session = _active_db_session.get()
+    if session:
+        async def _do() -> str | None:
             repo = SqlAlchemyAgentMemoryRepository(session)
             return await repo.recall(workspace_id, key)
-    
-    result = asyncio.run(_do())
+        result = async_to_sync(_do)()
+    else:
+        async def _do_fallback() -> str | None:
+            async with async_session_factory() as fallback_session:
+                repo = SqlAlchemyAgentMemoryRepository(fallback_session)
+                return await repo.recall(workspace_id, key)
+        result = async_to_sync(_do_fallback)()
+        
     if result:
         return result
         
@@ -143,6 +164,12 @@ def recall_fact(key: str) -> str:
 
 
 # ── DSPy Agent Adapter ───────────────────────────────────────────────────
+
+
+class ResearchSignature(dspy.Signature):
+    """You are a helpful and precise Research Assistant. Answer the question using search and memory facts."""
+    question = dspy.InputField(desc="The research query to resolve.")
+    answer = dspy.OutputField(desc="A clear, factual answer summarizing findings and memory data.")
 
 
 class DSPyAgentAdapter(IAgentProvider):
@@ -196,7 +223,7 @@ class DSPyAgentAdapter(IAgentProvider):
     def _build_agent(self) -> dspy.ReAct:
         """Create a DSPy ReAct agent with the registered tools."""
         agent = dspy.ReAct(
-            "question -> answer",
+            ResearchSignature,
             tools=self._tools,
             max_iters=self.max_iters,
         )

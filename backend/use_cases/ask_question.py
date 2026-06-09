@@ -248,8 +248,12 @@ class AskQuestionUseCase:
             # Load conversation history from DB
             history = await self._load_history(conv_id)
 
-            # Save user message
+             # Save user message
             await self._save_message(conv_id, "user", question.strip())
+
+            # Commit the session immediately so the user message is saved
+            if hasattr(self, '_session'):
+                await self._session.commit()
 
             # Select few-shot examples and render system prompt
             few_shots = select_few_shots(question.strip())
@@ -281,6 +285,26 @@ class AskQuestionUseCase:
                 completion_tokens=answer.completion_tokens,
                 total_tokens=answer.total_tokens,
             )
+
+            # Log token usage to DB
+            if workspace_id and user_id:
+                try:
+                    model_cleaned = answer.model
+                    if model_cleaned and model_cleaned.startswith("Answered by "):
+                        model_cleaned = model_cleaned[len("Answered by "):]
+                    
+                    await self.conversation_repo.log_token_usage(
+                        workspace_id=workspace_id,
+                        user_id=user_id,
+                        model=model_cleaned or "unknown",
+                        prompt_tokens=answer.prompt_tokens,
+                        completion_tokens=answer.completion_tokens,
+                        total_tokens=answer.total_tokens,
+                        cost=None,
+                    )
+                except Exception as log_exc:
+                    import logging
+                    logging.getLogger(__name__).warning("Failed to log token usage: %s", log_exc)
 
             # Commit the session
             if hasattr(self, '_session'):
@@ -317,8 +341,12 @@ class AskQuestionUseCase:
             # Load conversation history from DB
             history = await self._load_history(conv_id)
 
-            # Save user message
+             # Save user message
             await self._save_message(conv_id, "user", question.strip())
+
+            # Commit the session immediately so the user message is saved
+            if hasattr(self, '_session'):
+                await self._session.commit()
 
             # Select few-shot examples and render system prompt
             few_shots = select_few_shots(question.strip())
@@ -380,6 +408,22 @@ class AskQuestionUseCase:
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
             )
+
+            # Log token usage to DB
+            if workspace_id and user_id:
+                try:
+                    await self.conversation_repo.log_token_usage(
+                        workspace_id=workspace_id,
+                        user_id=user_id,
+                        model=model_name or "unknown",
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        cost=None,
+                    )
+                except Exception as log_exc:
+                    import logging
+                    logging.getLogger(__name__).warning("Failed to log token usage: %s", log_exc)
 
             # Commit the session
             if hasattr(self, '_session'):

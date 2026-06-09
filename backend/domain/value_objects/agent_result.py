@@ -32,4 +32,9 @@ class AgentResult:
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     model_used: str = ""
     thoughts: list[str] = field(default_factory=list)
+    conversation_id: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+
 

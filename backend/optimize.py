@@ -10,6 +10,8 @@ import dspy
 import mlflow
 import mlflow.dspy
 from dspy.evaluate import Evaluate
+from adapters.agent.dspy_agent import web_search, remember_fact, recall_fact, ResearchSignature
+
 class GRPO:
     def __init__(self, metric, num_train_steps=3, num_threads=1, exclude_demos=True):
         self.metric = metric
@@ -168,15 +170,15 @@ def combined_reward_metric(gold, prediction, trace=None):
     return (0.6 * acc) + (0.2 * fmt) + (0.2 * eff)
 
 # ReAct Program definition
-def dummy_tool(query: str) -> str:
-    """A dummy tool to satisfy ReAct module requirements in headless validation."""
-    return f"Result for {query}"
-
 class SimpleAgent(dspy.Module):
     def __init__(self):
         super().__init__()
-        self._tools = [dspy.Tool(dummy_tool, name="dummy_tool", desc="Perform general lookups.")]
-        self.react = dspy.ReAct("question -> answer", tools=self._tools, max_iters=3)
+        self._tools = [
+            dspy.Tool(web_search, name="web_search", desc="Search the web for factual information about any topic."),
+            dspy.Tool(remember_fact, name="remember_fact", desc="Store a fact in persistent memory. Use key=topic and value=fact."),
+            dspy.Tool(recall_fact, name="recall_fact", desc="Retrieve a previously stored fact from memory by its key/topic."),
+        ]
+        self.react = dspy.ReAct(ResearchSignature, tools=self._tools, max_iters=3)
         
     def forward(self, question):
         return self.react(question=question)

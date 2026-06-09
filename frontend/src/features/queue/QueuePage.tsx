@@ -100,8 +100,8 @@ export default function QueuePage() {
     };
   }, [activeWorkspace?.id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || isSubmitting) return;
 
@@ -124,6 +124,13 @@ export default function QueuePage() {
       addToast(err.message || 'Failed to queue research task', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
     }
   };
 
@@ -209,7 +216,8 @@ export default function QueuePage() {
                 ref={textareaRef}
                 value={input}
                 onChange={handleTextareaInput}
-                placeholder="Submit a background research query..."
+                onKeyDown={handleKeyDown}
+                placeholder="Submit a background research query... (Enter to send)"
                 rows={2}
                 disabled={isSubmitting}
                 className="w-full bg-transparent text-slate-100 text-sm placeholder:text-slate-600 resize-none focus:outline-none px-3 py-2 max-h-40"

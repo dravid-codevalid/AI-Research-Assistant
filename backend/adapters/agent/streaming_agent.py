@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import httpx
@@ -23,13 +24,14 @@ SYSTEM_PROMPT = """You are a Research Assistant. Your job is to answer research 
 You have access to tools that let you search the web, store facts in persistent memory, and recall previously stored facts.
 
 Guidelines:
-- Use web_search when you need factual information you are not confident about.
-- Use remember_fact to store important findings for future reference.
-- Use recall_fact to retrieve previously stored facts.
+- First, check memory via recall_fact for any key terms or labels related to the question before calling other tools.
+- Use web_search only if the required information is missing or incomplete in memory.
+- Use remember_fact to store important findings for future reference. Do not save duplicates.
 - Think step-by-step before answering.
-- If you can answer directly from knowledge, do so without calling tools.
+- If you can answer directly from knowledge or memory, do so without searching the web.
 - Always provide a clear, well-structured final answer.
 """
+
 
 # OpenAI-compatible tool definitions sent with every LiteLLM request.
 TOOLS_SCHEMA: list[dict[str, Any]] = [
@@ -120,11 +122,13 @@ class StreamingLiteLLMAgent(IAgentProvider):
         base_url: str | None = None,
         api_key: str | None = None,
         max_iters: int = 5,
+        source_page: str = "agent",
     ) -> None:
         self.model_name = model_name
         self.base_url = (base_url or settings.LITELLM_BASE_URL).rstrip("/")
         self.api_key = api_key or settings.LITELLM_MASTER_KEY
         self.max_iters = max_iters
+        self.source_page = source_page
 
     def _build_headers(self, user_id: str | None, workspace_id: str | None) -> dict[str, str]:
         headers = {
@@ -175,6 +179,8 @@ class StreamingLiteLLMAgent(IAgentProvider):
         tool_calls_record: list[dict[str, str]] = []
         final_answer = ""
         model_used = self.model_name
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
 
         # Bind workspace context for memory tools
         from adapters.agent import dspy_agent
@@ -192,10 +198,10 @@ class StreamingLiteLLMAgent(IAgentProvider):
                 "tools": TOOLS_SCHEMA,
                 "stream": False,
                 "temperature": 0.0,
+                "metadata": {"source_page": self.source_page},
             }
 
             try:
-                import asyncio as _asyncio
                 max_retries = 3
                 result = None
                 for attempt in range(max_retries):
@@ -209,7 +215,7 @@ class StreamingLiteLLMAgent(IAgentProvider):
                             wait = 2 ** (attempt + 1)  # 2s, 4s
                             logger.warning("Rate limited (429), retrying in %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
                             yield {"event": "thought", "text": f"Rate limited, retrying in {wait}s..."}
-                            await _asyncio.sleep(wait)
+                            await asyncio.sleep(wait)
                             continue
                         response.raise_for_status()
                         result = response.json()
@@ -224,6 +230,11 @@ class StreamingLiteLLMAgent(IAgentProvider):
             finish_reason = choice.get("finish_reason", "")
             content = message.get("content", "") or ""
             response_tool_calls = message.get("tool_calls")
+
+            # Accumulate token usage
+            usage = result.get("usage") or {}
+            total_prompt_tokens += usage.get("prompt_tokens", 0) or 0
+            total_completion_tokens += usage.get("completion_tokens", 0) or 0
 
             # Track which model actually answered (may differ due to fallbacks)
             model_used = result.get("model", self.model_name)
@@ -257,7 +268,7 @@ class StreamingLiteLLMAgent(IAgentProvider):
                     thoughts.append(thought_text)
                     yield {"event": "thought", "text": thought_text}
 
-                    observation = self._execute_tool(tool_name, tool_args_str)
+                    observation = await asyncio.to_thread(self._execute_tool, tool_name, tool_args_str)
 
                     # Full output for frontend, truncated for context history
                     truncated_observation = _truncate(observation)
@@ -286,49 +297,14 @@ class StreamingLiteLLMAgent(IAgentProvider):
                 continue
 
             # ── Case 2: Model produced a final text answer ────────────
-            # Stream this final response to the frontend for real-time UX.
-            # We re-issue the request in streaming mode without tools.
-            stream_payload: dict[str, Any] = {
-                "model": self.model_name,
-                "messages": messages,
-                "stream": True,
-                "temperature": 0.0,
-            }
-
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{self.base_url}/v1/chat/completions",
-                        headers=headers,
-                        json=stream_payload,
-                    ) as stream_response:
-                        stream_response.raise_for_status()
-
-                        async for line in stream_response.aiter_lines():
-                            if not line.startswith("data: "):
-                                continue
-                            data_str = line[len("data: "):]
-                            if data_str.strip() == "[DONE]":
-                                break
-
-                            try:
-                                chunk = json.loads(data_str)
-                            except json.JSONDecodeError:
-                                continue
-
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            token = delta.get("content", "")
-                            if token:
-                                final_answer += token
-                                yield {"event": "token", "text": token, "model_used": model_used}
-
-            except Exception as exc:
-                # If streaming fails, fall back to the non-streamed content
-                logger.warning("Streaming final answer failed, using non-streamed content: %s", exc)
-                final_answer = content.strip()
-                if final_answer:
-                    yield {"event": "token", "text": final_answer, "model_used": model_used}
+            # Chunk and yield the final answer text content to simulate streaming
+            # without re-issuing a second API request.
+            final_answer = content.strip()
+            chunk_size = 12
+            for i in range(0, len(final_answer), chunk_size):
+                chunk_text = final_answer[i:i+chunk_size]
+                yield {"event": "token", "text": chunk_text, "model_used": model_used}
+                await asyncio.sleep(0.01)
 
             break  # We have the final answer, exit the loop
 
@@ -338,6 +314,9 @@ class StreamingLiteLLMAgent(IAgentProvider):
             "tool_calls": tool_calls_record,
             "thoughts": thoughts,
             "model_used": model_used,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
 
     # ── Non-streaming convenience method ──────────────────────────────────
@@ -353,6 +332,8 @@ class StreamingLiteLLMAgent(IAgentProvider):
         tool_calls: list[ToolCallRecord] = []
         thoughts: list[str] = []
         model_used = self.model_name
+        prompt_tokens = 0
+        completion_tokens = 0
 
         async for event in self.run_stream(question, user_id, workspace_id):
             if event["event"] == "error":
@@ -365,10 +346,16 @@ class StreamingLiteLLMAgent(IAgentProvider):
                 ]
                 thoughts = event["thoughts"]
                 model_used = event.get("model_used", self.model_name)
+                prompt_tokens = event.get("prompt_tokens", 0)
+                completion_tokens = event.get("completion_tokens", 0)
 
         return AgentResult(
             answer=answer,
             tool_calls=tool_calls,
             model_used=model_used,
             thoughts=thoughts,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
         )
+

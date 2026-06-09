@@ -30,3 +30,4 @@ class Message:
     completion_tokens: int = field(default=0)
     total_tokens: int = field(default=0)
     created_at: str | None = field(default=None)
+    tool_calls: list | dict | None = field(default=None)

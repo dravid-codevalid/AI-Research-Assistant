@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from domain.entities.conversation import Conversation
 from domain.entities.message import Message
+import uuid
 from domain.ports.conversation_repository import IConversationRepository
-from infrastructure.models import ConversationModel, MessageModel
+from infrastructure.models import ConversationModel, MessageModel, TokenUsageLogModel
 
 
 class SqlAlchemyConversationRepository(IConversationRepository):
@@ -46,6 +47,7 @@ class SqlAlchemyConversationRepository(IConversationRepository):
             completion_tokens=model.completion_tokens,
             total_tokens=model.total_tokens,
             created_at=model.created_at,
+            tool_calls=model.tool_calls,
         )
 
     # ── Conversation CRUD ──────────────────────────────────────────────
@@ -135,6 +137,7 @@ class SqlAlchemyConversationRepository(IConversationRepository):
             prompt_tokens=message.prompt_tokens,
             completion_tokens=message.completion_tokens,
             total_tokens=message.total_tokens,
+            tool_calls=message.tool_calls,
             **({"created_at": message.created_at} if message.created_at else {}),
         )
         self._session.add(model)
@@ -239,3 +242,28 @@ class SqlAlchemyConversationRepository(IConversationRepository):
             }
             for row in rows
         ]
+
+    async def log_token_usage(
+        self,
+        workspace_id: str,
+        user_id: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        cost: float | None = None,
+    ) -> None:
+        """Log a token usage record to the database for tracking."""
+        model_instance = TokenUsageLogModel(
+            id=str(uuid.uuid4()),
+            workspace_id=workspace_id,
+            user_id=user_id,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost=cost,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._session.add(model_instance)
+        await self._session.flush()
