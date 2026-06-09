@@ -30,15 +30,17 @@ export async function askAgent(
 export async function askAgentStream(
   question: string,
   onEvent: (event: {
-    event: 'thought' | 'tool_call' | 'token' | 'done' | 'error';
+    event: 'thought' | 'tool_call' | 'token' | 'done' | 'error' | 'conversation_id';
     text?: string;
     tool?: string;
     input?: string;
     output?: string;
     model_used?: string;
+    conversation_id?: string;
   }) => void,
   userId?: string,
   workspaceId?: string,
+  conversationId?: string,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/agent/ask/stream`, {
     method: 'POST',
@@ -47,6 +49,7 @@ export async function askAgentStream(
       question,
       user_id: userId,
       workspace_id: workspaceId,
+      conversation_id: conversationId,
     }),
   });
 

@@ -1,14 +1,24 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { PaperPlaneTilt, Trash, Robot } from '@phosphor-icons/react';
 import { useAgent } from './hooks/useAgent';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import AgentMessage from './AgentMessage';
 import MemoryPanel from './MemoryPanel';
+import ConversationSidebar from '../chat/ConversationSidebar';
 import { getAgentModelInfo, type ModelInfo } from './api';
 
 export default function AgentPage() {
-  const { messages, isLoading, error, sendMessage, clearChat } = useAgent();
+  const {
+    messages,
+    isLoading,
+    error,
+    conversationId,
+    sendMessage,
+    clearChat,
+    loadConversation,
+    startNewConversation,
+  } = useAgent();
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 
   // Fetch model info on mount
@@ -63,8 +73,43 @@ export default function AgentPage() {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   };
 
+  const handleSelectConversation = useCallback(
+    (convId: string) => {
+      if (convId !== conversationId) {
+        loadConversation(convId);
+      }
+    },
+    [conversationId, loadConversation],
+  );
+
+  const handleNewConversation = useCallback(() => {
+    startNewConversation();
+  }, [startNewConversation]);
+
+  // Sidebar refresh trigger
+  const [sidebarRefresh, setSidebarRefresh] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      setSidebarRefresh((prev) => prev + 1);
+    }
+  }, [isLoading, messages.length]);
+
   return (
     <div className="flex h-full w-full" id="agent-page">
+      {/* ── Static Sidebar ── */}
+      <aside className="w-60 shrink-0 hidden md:flex md:flex-col border-r border-slate-800/60 bg-slate-950/80">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <ConversationSidebar
+            workspaceId={activeWorkspace?.id}
+            activeConversationId={conversationId}
+            onSelectConversation={handleSelectConversation}
+            onNewConversation={handleNewConversation}
+            refreshTrigger={sidebarRefresh}
+          />
+        </div>
+      </aside>
+
       {/* ── Main Agent Chat Area ── */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Header */}

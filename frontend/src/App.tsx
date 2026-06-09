@@ -2,6 +2,7 @@ import { RouterProvider } from 'react-router-dom';
 import { router } from './router';
 import { WorkspaceProvider } from './context/WorkspaceContext';
 import { AuthProvider } from './context/AuthContext';
+import { AgentProvider } from './context/AgentContext';
 import { ErrorBoundary } from 'react-error-boundary';
 
 function ErrorFallback({ error }: { error: any }) {
@@ -28,7 +29,9 @@ function App() {
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <AuthProvider>
         <WorkspaceProvider>
-          <RouterProvider router={router} />
+          <AgentProvider>
+            <RouterProvider router={router} />
+          </AgentProvider>
         </WorkspaceProvider>
       </AuthProvider>
     </ErrorBoundary>

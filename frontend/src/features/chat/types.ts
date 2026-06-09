@@ -28,5 +28,6 @@ export interface ConversationDetail {
     completion_tokens: number;
     total_tokens: number;
     created_at?: string;
+    tool_calls?: any[];
   }>;
 }

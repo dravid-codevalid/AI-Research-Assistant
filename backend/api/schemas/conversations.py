@@ -26,6 +26,7 @@ class MessageResponse(BaseModel):
     completion_tokens: int = 0
     total_tokens: int = 0
     created_at: str | None = None
+    tool_calls: list | dict | None = None
 
 
 class ConversationDetailResponse(BaseModel):

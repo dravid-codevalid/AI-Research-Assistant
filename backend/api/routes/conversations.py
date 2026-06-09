@@ -82,6 +82,7 @@ async def get_conversation(
                     completion_tokens=m.completion_tokens,
                     total_tokens=m.total_tokens,
                     created_at=m.created_at,
+                    tool_calls=m.tool_calls,
                 )
                 for m in messages
             ],
